@@ -1,5 +1,4 @@
 #include "llist.h"
-#include "event-emitter.h"
 #include <stdio.h>
 #include <stdlib.h>
 

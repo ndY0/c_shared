@@ -8,8 +8,18 @@
 
 typedef void *(*listener_t)(void *args);
 
+typedef struct event_t
+{
+    void *event;
+    void *return_val;
+    void *arg;
+    int fd;
+    listener_t listener;
+} event_t;
+
 typedef struct _listener_entry
 {
+    event_t *event;
     listener_t listener;
     int once;
 } _listener_entry;
@@ -30,7 +40,7 @@ typedef struct _listener_args_s _listener_args;
 
 struct _listener_op_args_s
 {
-    void *event;
+    event_t *event;
     int once;
     listener_t listener;
     pthread_mutex_t mutex;
@@ -101,6 +111,10 @@ void _foreach_listener_destroy(int pos, _listener_entry *entry, void *context)
 {
     if (entry)
     {
+	if(entry->event)
+	{
+	    free(entry->event);
+	}
         free(entry);
     }
 }
@@ -122,8 +136,12 @@ int _find_event(int pos, _event_entry *entry, find_event_ctx_t *context)
 
 void _foreach_listener_remove(int pos, _listener_entry *entry, listener_remove_ctx_t *context)
 {
-    if (entry && context->listener == entry->listener)
+    if (entry && context->listener == entry->event->listener)
     {
+	if(entry->event)
+	{
+	    free(entry->event);
+	}
         free(entry);
         llist_delete_at(context->listeners, pos);
         context->args->listeners_count -= 1;
@@ -135,7 +153,8 @@ void _foreach_listener_emit(int pos, _listener_entry *entry, listener_emit_ctx_t
     if (entry)
     {
         pthread_t id;
-        pthread_create(&id, NULL, entry->listener, context->arg);
+        entry->event->arg = context->arg;
+        pthread_create(&id, NULL, entry->listener, entry->event->arg);
         pthread_detach(id);
         if (entry->once)
         {
@@ -149,9 +168,8 @@ void _foreach_listener_emit(int pos, _listener_entry *entry, listener_emit_ctx_t
     }
 }
 
-void _append_listener(LinkedList *events, run_args_t *arg)
-{
-    int event = (int)arg->append_listener_args->event;
+void _append_listener(LinkedList *events, run_args_t *arg)	{
+    int event = (int)arg->append_listener_args->event->event;
     _event_entry *event_entry;
     find_event_ctx_t *ctx = malloc(sizeof(find_event_ctx_t));
     ctx->event = event;
@@ -162,6 +180,7 @@ void _append_listener(LinkedList *events, run_args_t *arg)
         LinkedList *listeners = event_entry->listeners;
         int size = llist_size(listeners);
         _listener_entry *listener_entry = malloc(sizeof(_listener_entry));
+	listener_entry->event = arg->append_listener_args->event;
         listener_entry->listener = arg->append_listener_args->listener;
         listener_entry->once = arg->append_listener_args->once;
         llist_set_at(listeners, size, listener_entry);
@@ -171,6 +190,7 @@ void _append_listener(LinkedList *events, run_args_t *arg)
         int size = llist_size(events);
         _event_entry *new_event_entry = malloc(sizeof(_event_entry));
         _listener_entry *listener_entry = malloc(sizeof(_listener_entry));
+	listener_entry->event = arg->append_listener_args->event;
         listener_entry->listener = arg->append_listener_args->listener;
         listener_entry->once = arg->append_listener_args->once;
         new_event_entry->id = event;
@@ -183,8 +203,9 @@ void _append_listener(LinkedList *events, run_args_t *arg)
 
 void _remove_listener(LinkedList *events, run_args_t *arg)
 {
-    int event = (int)arg->remove_listener_args->event;
+    int event = (int)arg->remove_listener_args->event->event;
     _event_entry *event_entry;
+    free(arg->remove_listener_args->event);
     find_event_ctx_t *ctx = malloc(sizeof(find_event_ctx_t));
     ctx->event = event;
     event_entry = llist_find(events, &_find_event, ctx);
@@ -218,11 +239,17 @@ void _emit(LinkedList *events, run_args_t *arg)
     }
 }
 
-int _on(emitter_t *emitter, void *event, listener_t listener, int once)
+void *on_callback(event_t *event)
+{
+    event->listener(event->arg);
+    return NULL;
+}
+
+int _on(emitter_t *emitter, event_t *event, int once)
 {
     int locked = pthread_mutex_lock(&emitter->args->append_listener_args->mutex);
     emitter->args->append_listener_args->event = event;
-    emitter->args->append_listener_args->listener = listener;
+    emitter->args->append_listener_args->listener = &on_callback;
     emitter->args->append_listener_args->once = once;
     char signal[1] = "a";
     char buffer[1];
@@ -332,36 +359,44 @@ int destroy_emitter(emitter_t *emitter)
 
 int on(emitter_t *emitter, void *event, listener_t listener)
 {
-    return _on(emitter, event, listener, 0);
+    event_t *event_s = malloc(sizeof(event_t));
+    event_s->listener = listener;
+    event_s->event = event;
+    return _on(emitter, event_s, 0);
 }
 
 int once(emitter_t *emitter, void *event, listener_t listener)
 {
-    return _on(emitter, event, listener, 1);
+    event_t *event_s = malloc(sizeof(event_t));
+    event_s->listener = listener;
+    event_s->event = event;
+    return _on(emitter, event_s, 1);
 }
 
 void off(emitter_t *emitter, void *event, listener_t listener)
 {
     pthread_mutex_lock(&emitter->args->remove_listener_args->mutex);
-    emitter->args->remove_listener_args->event = event;
+    event_t *event_s = malloc(sizeof(event_t));
+    event_s->event = event;
+    emitter->args->remove_listener_args->event = event_s;
     emitter->args->remove_listener_args->listener = listener;
     char signal[1] = "r";
     char res[1];
     write(emitter->args->fd_read[1], signal, sizeof(char));
     read(emitter->args->fd_write[0], res, sizeof(char));
-    pthread_mutex_unlock(&emitter->args->remove_listener_args->mutex);
+    pthread_mutex_unlock(&emitter->args->listener_args->mutex);
 }
 
-void emit(emitter_t *emitter, void *event, void *data)
+void *take_callback(event_t *args)
 {
-    pthread_mutex_lock(&emitter->args->listener_args->mutex);
-    emitter->args->listener_args->event = event;
-    emitter->args->listener_args->args = data;
-    char signal[1] = "e";
-    char res[1];
-    write(emitter->args->fd_read[1], signal, sizeof(char));
-    read(emitter->args->fd_write[0], res, sizeof(char));
-    pthread_mutex_unlock(&emitter->args->listener_args->mutex);
+    void *return_val = args->return_val;
+    void *arg = args->arg;
+    int fd = args->fd;
+    return_val = arg;
+    char signal[1] = "r";
+    write(fd, signal, sizeof(char));
+    return NULL;
+
 }
 
 void *take(emitter_t *emitter, void *event)
@@ -370,15 +405,11 @@ void *take(emitter_t *emitter, void *event)
     int fd[2];
     void *return_val;
     pipe(fd);
-    void *callback(void *arg)
-    {
-        return_val = arg;
-        char signal[1] = "r";
-        write(fd[1], signal, sizeof(char));
-        return NULL;
-    }
-    emitter->args->append_listener_args->event = event;
-    emitter->args->append_listener_args->listener = &callback;
+    event_t *event_s = malloc(sizeof(event_t));
+    event_s->fd = fd[1];
+    event_s->return_val = return_val;
+    emitter->args->append_listener_args->event = event_s;
+    emitter->args->append_listener_args->listener = &take_callback;
     emitter->args->append_listener_args->once = 1;
     char signal[1] = "a";
     char res[1];

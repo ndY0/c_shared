@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+typedef void *(*duplicate_t)(void *args);
+
+typedef struct copy_foreach_ctx
+{
+    LinkedList *target;
+    duplicate_t duplicate;
+} copy_foreach_ctx;
+
 void llist_set_at(LinkedList *llist, int pos, void *data) {
 	
 	if(!llist) {
@@ -123,15 +131,15 @@ void *llist_find(LinkedList *llist, int (*callback)(int pos, void *data, void *c
 	}
 }
 
-void llist_copy(LinkedList *target, LinkedList *source, void *(*duplicate)(void*)) {	
-	void llist_copy_foreach(int pos, void *data, void *context) {
-		llist_set_at(target, pos, duplicate(data));
-	}
-	llist_foreach(source, &llist_copy_foreach, NULL);
+void llist_copy_foreach(int pos, void *data, copy_foreach_ctx *ctx)
+{
+    llist_set_at(ctx->target, pos, ctx->duplicate(data));
 }
 
-void llist_serialize(char *target, int (*get_node_size)(void *), char *serialize_node(void *), LinkedList *source) {
-		void llist_serialize_foreach(int pos, void *data) {
-			
-		}
+void llist_copy(LinkedList *target, LinkedList *source, void *(*duplicate)(void*)) {
+	copy_foreach_ctx *ctx = malloc(sizeof(copy_foreach_ctx));
+        ctx->target = target;
+	ctx->duplicate = duplicate;
+	llist_foreach(source, &llist_copy_foreach, ctx);
+	free(ctx);
 }
