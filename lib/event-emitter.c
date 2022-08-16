@@ -154,7 +154,7 @@ void _foreach_listener_emit(int pos, _listener_entry *entry, listener_emit_ctx_t
     {
         pthread_t id;
         entry->event->arg = context->arg;
-        pthread_create(&id, NULL, entry->listener, entry->event->arg);
+        pthread_create(&id, NULL, entry->listener, entry->event);
         pthread_detach(id);
         if (entry->once)
         {
@@ -387,14 +387,24 @@ void off(emitter_t *emitter, void *event, listener_t listener)
     pthread_mutex_unlock(&emitter->args->listener_args->mutex);
 }
 
+void emit(emitter_t *emitter, void *event, void *data)
+{
+    pthread_mutex_lock(&emitter->args->listener_args->mutex);
+    emitter->args->listener_args->event = event;
+    emitter->args->listener_args->args = data;
+    char signal[1] = "e";
+    char res[1];
+    write(emitter->args->fd_read[1], signal, sizeof(char));
+    read(emitter->args->fd_write[0], res, sizeof(char));
+    pthread_mutex_unlock(&emitter->args->listener_args->mutex);
+}
+
 void *take_callback(event_t *args)
 {
-    void *return_val = args->return_val;
-    void *arg = args->arg;
-    int fd = args->fd;
-    return_val = arg;
+    printf("take callback executed, fd : %d", args->fd);
+    args->return_val = args->arg;
     char signal[1] = "r";
-    write(fd, signal, sizeof(char));
+    write(args->fd, signal, sizeof(char));
     return NULL;
 
 }
@@ -408,6 +418,7 @@ void *take(emitter_t *emitter, void *event)
     event_t *event_s = malloc(sizeof(event_t));
     event_s->fd = fd[1];
     event_s->return_val = return_val;
+    event_s->event = event;
     emitter->args->append_listener_args->event = event_s;
     emitter->args->append_listener_args->listener = &take_callback;
     emitter->args->append_listener_args->once = 1;
@@ -419,7 +430,9 @@ void *take(emitter_t *emitter, void *event)
     pthread_mutex_unlock(&emitter->args->append_listener_args->mutex);
     if(result) {
         char buff[1];
+	printf("listening for answer ...");
         read(fd[0], buff, sizeof(char));
+	printf("got answer ! ");
         close(fd[0]);
         close(fd[1]);
         return return_val;

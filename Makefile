@@ -16,5 +16,5 @@ pqueue.o:
 	gcc -static -Wno-incompatible-pointer-types -c ./lib/pqueue.c
 output: pqueue.o queue.o event-emitter.o llist.o test.o test_queue.o
 	gcc -o test llist.o event-emitter.o test.o -D_REENTRANT
-	gcc -o test_queue llist.o event-emitter.o queue.o pqueue.o test_pueue.o -D_REENTRANT
+	gcc -o test_queue llist.o event-emitter.o queue.o pqueue.o test_queue.o -D_REENTRANT -lm
 all: output clean

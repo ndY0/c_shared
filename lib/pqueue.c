@@ -15,7 +15,7 @@ typedef void *(*job_callback)(void *args);
 
 typedef struct pqueue_job_t
 {
-    double id;
+    unsigned long id;
     int answer;
     void *args;
     job_callback callback;
@@ -133,7 +133,7 @@ pqueue_t *create_pqueue(pqueue_args_t *args)
 }
 pqueue_job_t *create_pqueue_job(job_callback callback, void *args)
 {
-    double id = round(rand() / RAND_MAX * pow((double)10, (double)37));
+    unsigned long id = (unsigned long)round(rand() / RAND_MAX * ULONG_MAX);
     pqueue_job_t *job = malloc(sizeof(pqueue_job_t));
     job->args = args;
     job->callback = callback;

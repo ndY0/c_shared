@@ -73,48 +73,48 @@ int main(int argc, char *argv[])
     config->num_threads = 10;
     pqueue_t *pqueue = create_pqueue(config);
     free(config);
-    // int i = 0;
-    // // test fire and forget
-    // for (i = 0; i < 100; i++)
-    // {
-    //     usleep(10000);
-    //     pqueue_job_t *job1 = create_pqueue_job(&worker1, NULL);
-    //     pqueue_job_t *job2 = create_pqueue_job(&worker2, NULL);
-    //     printf("pushed jobs : %d\n", 2 * (i + 1));
-    //     pqueue_push(pqueue, job1);
-    //     pqueue_push(pqueue, job2);
-    // }
-    // sleep(5);
+    int i = 0;
+    // test fire and forget
+    for (i = 0; i < 100; i++)
+    {
+         usleep(10000);
+         pqueue_job_t *job1 = create_pqueue_job(&worker1, NULL);
+         pqueue_job_t *job2 = create_pqueue_job(&worker2, NULL);
+         printf("pushed jobs : %d\n", 2 * (i + 1));
+         pqueue_push(pqueue, job1);
+         pqueue_push(pqueue, job2);
+     }
+     sleep(5);
 
-    // //test await
-    // // int i = 0;
-    // for (i = 0; i < 100; i++)
-    // {
-    //     usleep(10000);
-    //     test *arg1 = malloc(sizeof(test));
-    //     arg1->val = 2 * (i) + 1;
-    //     test *arg2 = malloc(sizeof(test));
-    //     arg2->val = 2 * (i + 1);
-    //     pqueue_job_t *job1 = create_pqueue_job(&worker1, arg1);
-    //     pqueue_job_t *job2 = create_pqueue_job(&worker2, arg2);
-    //     printf("pushed jobs : %d\n", 2 * (i + 1));
-    //     test *returned_arg1 = (test *)pqueue_await(pqueue, job1);
-    //     test *returned_arg2 = (test *)pqueue_await(pqueue, job2);
-    //     if(returned_arg1)
-    //     {
-    //         printf("returned arg1 : %d\n", returned_arg1->val);
-    //         free(returned_arg1);
-    //     }
-    //     if(returned_arg2)
-    //     {
-    //         printf("returned arg2 : %d\n", returned_arg2->val);
-    //         free(returned_arg2);
-    //     }
-    // }
-    // sleep(5);
+     // test await
+     // int i = 0;
+     for (i = 0; i < 100; i++)
+     {
+         usleep(10000);
+         test *arg1 = malloc(sizeof(test));
+         arg1->val = 2 * (i) + 1;
+         test *arg2 = malloc(sizeof(test));
+         arg2->val = 2 * (i + 1);
+         pqueue_job_t *job1 = create_pqueue_job(&worker1, arg1);
+         pqueue_job_t *job2 = create_pqueue_job(&worker2, arg2);
+         printf("pushed jobs : %d\n", 2 * (i + 1));
+         test *returned_arg1 = (test *)pqueue_await(pqueue, job1);
+         test *returned_arg2 = (test *)pqueue_await(pqueue, job2);
+         if(returned_arg1)
+         {
+             printf("returned arg1 : %d\n", returned_arg1->val);
+             free(returned_arg1);
+         }
+         if(returned_arg2)
+         {
+             printf("returned arg2 : %d\n", returned_arg2->val);
+             free(returned_arg2);
+         }
+     }
+     sleep(5);
 
     //test await batch
-    int i = 0;
+    // int i = 0;
     int batch_size = 10;
     test *args[batch_size];
     pqueue_job_t *jobs[batch_size];

@@ -39,9 +39,11 @@ void *test_take(test_take_arg *arg)
 {
     while(arg->running)
     {
+	printf("executed !");
         test_arg *args = take(arg->emitter, arg->event);
         printf("in test_take, received arg : %d\n", args ? args->test : 0);
     }
+    return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -58,8 +60,8 @@ int main(int argc, char *argv[])
     on(emitter, event2, &say_hello);
     on(emitter, event2, &say_hello2);
 
-    off(emitter, event, &say_hello);
-    off(emitter, event2, &say_hello2);
+    // off(emitter, event, &say_hello);
+    // off(emitter, event2, &say_hello2);
 
     pthread_t test_take_id;
     test_take_arg * test_take_args = malloc(sizeof(test_take_arg));
@@ -72,6 +74,7 @@ int main(int argc, char *argv[])
     on(emitter, event, &say_hello);
     on(emitter, event, &say_hello2);
     on(emitter, event, &say_hello);
+    sleep(3);
 
     test_arg *arg = malloc(sizeof(test_arg));
     arg->test = 10;
