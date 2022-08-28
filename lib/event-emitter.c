@@ -14,6 +14,7 @@ typedef struct event_t
     void *return_val;
     void *arg;
     int fd;
+    int fd_read_answer;
     listener_t listener;
 } event_t;
 
@@ -81,8 +82,17 @@ typedef struct listener_remove_ctx_t
     listener_t listener;
     LinkedList *listeners;
     run_args_t *args;
+    pthread_t listener_pid;
+    int fd_read_answer;
 
 } listener_remove_ctx_t;
+
+typedef struct wait_for_worker_before_remove_ctx_t
+{
+    int pos;
+    _listener_entry *entry;
+    listener_remove_ctx_t *remove_context;
+} wait_for_worker_before_remove_ctx_t;
 
 typedef struct listener_emit_ctx_t
 {
@@ -106,6 +116,9 @@ run_args_t *_init_run_args(int max_listeners)
     args->max_listeners = max_listeners;
     return args;
 }
+
+
+void _foreach_listener_remove(int pos, _listener_entry *entry, listener_remove_ctx_t *context);
 
 void _foreach_listener_destroy(int pos, _listener_entry *entry, void *context)
 {
@@ -134,9 +147,35 @@ int _find_event(int pos, _event_entry *entry, find_event_ctx_t *context)
     return entry && context->event == entry->id ? 1 : 0;
 }
 
+void *wait_for_worker_before_remove(wait_for_worker_before_remove_ctx_t *ctx)
+{
+    char buffer[1];
+    if(ctx->remove_context->fd_read_answer)
+    {
+        read(ctx->remove_context->fd_read_answer, buffer, sizeof(char));
+        printf("has read ? %s\n", buffer);
+    }
+    pthread_t id = ctx->remove_context->listener_pid;
+    // pthread_join(id, NULL);
+    ctx->remove_context->listener_pid = (pthread_t)0;
+    _foreach_listener_remove(ctx->pos, ctx->entry, ctx->remove_context);
+    free(ctx);
+    return NULL;
+}
+
 void _foreach_listener_remove(int pos, _listener_entry *entry, listener_remove_ctx_t *context)
 {
-    if (entry && context->listener == entry->event->listener)
+    if(context->listener_pid)
+    {
+        pthread_t remove_pid;
+	wait_for_worker_before_remove_ctx_t *ctx = malloc(sizeof(wait_for_worker_before_remove_ctx_t));
+	ctx->remove_context = context;
+	ctx->pos = pos;
+	ctx->entry = entry;
+	pthread_create(&remove_pid, NULL, &wait_for_worker_before_remove, ctx);
+	pthread_detach(remove_pid);
+    }
+    else if (entry && context->listener == entry->event->listener)
     {
 	if(entry->event)
 	{
@@ -155,16 +194,21 @@ void _foreach_listener_emit(int pos, _listener_entry *entry, listener_emit_ctx_t
         pthread_t id;
         entry->event->arg = context->arg;
         pthread_create(&id, NULL, entry->listener, entry->event);
-        pthread_detach(id);
         if (entry->once)
         {
             listener_remove_ctx_t *listener_remove_context = malloc(sizeof(listener_remove_ctx_t));
             listener_remove_context->listener = entry->listener;
             listener_remove_context->listeners = context->listeners;
             listener_remove_context->args = context->args;
+	    listener_remove_context->listener_pid = id;
+	    listener_remove_context->fd_read_answer = entry->event->fd_read_answer;
             _foreach_listener_remove(pos, entry, listener_remove_context);
             free(listener_remove_context);
         }
+	else
+	{
+            pthread_detach(id);
+	}
     }
 }
 
@@ -401,7 +445,6 @@ void emit(emitter_t *emitter, void *event, void *data)
 
 void *take_callback(event_t *args)
 {
-    printf("take callback executed, fd : %d", args->fd);
     args->return_val = args->arg;
     char signal[1] = "r";
     write(args->fd, signal, sizeof(char));
@@ -413,11 +456,14 @@ void *take(emitter_t *emitter, void *event)
 {
     pthread_mutex_lock(&emitter->args->append_listener_args->mutex);
     int fd[2];
-    void *return_val;
+    int fd_read_answer[2];
     pipe(fd);
+    pipe(fd_read_answer);
+    printf("file descriptor for read orders :%d\n", emitter->args->fd_read[0]);
+    printf("file descriptor for read response : %d", fd[0]);
     event_t *event_s = malloc(sizeof(event_t));
     event_s->fd = fd[1];
-    event_s->return_val = return_val;
+    event_s->fd_read_answer = fd_read_answer[0];
     event_s->event = event;
     emitter->args->append_listener_args->event = event_s;
     emitter->args->append_listener_args->listener = &take_callback;
@@ -427,18 +473,27 @@ void *take(emitter_t *emitter, void *event)
     write(emitter->args->fd_read[1], signal, sizeof(char));
     read(emitter->args->fd_write[0], res, sizeof(char));
     int result = res[0] == 'o' ? 1 : 0;
-    pthread_mutex_unlock(&emitter->args->append_listener_args->mutex);
     if(result) {
+        void *return_val;
         char buff[1];
+	char buff_write[1] = "o";
 	printf("listening for answer ...");
         read(fd[0], buff, sizeof(char));
+	return_val = event_s->return_val;
+	write(fd_read_answer[1], buff_write, sizeof(char));
+        pthread_mutex_unlock(&emitter->args->append_listener_args->mutex);
 	printf("got answer ! ");
         close(fd[0]);
         close(fd[1]);
+	close(fd_read_answer[0]);
+	close(fd_read_answer[1]);
         return return_val;
     } else {
         close(fd[0]);
         close(fd[1]);
+	close(fd_read_answer[0]);
+	close(fd_read_answer[1]);
+        pthread_mutex_unlock(&emitter->args->append_listener_args->mutex);
         return NULL;
     }
 }

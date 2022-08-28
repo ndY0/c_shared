@@ -100,6 +100,10 @@ int main(int argc, char *argv[])
          printf("pushed jobs : %d\n", 2 * (i + 1));
          test *returned_arg1 = (test *)pqueue_await(pqueue, job1);
          test *returned_arg2 = (test *)pqueue_await(pqueue, job2);
+	 printf("return 1 addr : %p\n", returned_arg1);
+	 printf("return 2 addr : %p\n", returned_arg2);
+	 printf("return 2 val : %d\n", returned_arg2->val);
+	 printf("return 1 val : %d\n", returned_arg1->val);
          if(returned_arg1)
          {
              printf("returned arg1 : %d\n", returned_arg1->val);
